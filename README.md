@@ -54,7 +54,14 @@ cd benches/experiments/gemm_mini_test
 pixi run make
 ```
 
+To have the Claude Code agents run a synthesis experiment:
 
+1. Create a symlink in the main folder to .claude/workflow.py
+2. Ensure you have Claude Code installed and a supported API key in your environment
+3. Call the following for an experiment on the threemm kernel with the designated dimension and target 
+```bash
+python workflow.py --kernel threemm --dimension TEST --target Transformed
+```
 ## Project Structure
 
 ```
