@@ -11,7 +11,7 @@ import argparse
 
 _DATASET_CHOICES = ["MINI", "SMALL", "MEDIUM", "LARGE", "EXTRALARGE"]
 _DTYPE_CHOICES = ["float16", "float32", "float64"]
-_TARGET_CHOICES = ["verilog", "optimized", "transformed", "gds", "llvm"]
+_TARGET_CHOICES = ["verilog", "optimized", "transformed", "gds", "llvm", "verilog_results", "optimized_results", "transformed_results"]
 
 
 def _add_init_parser(subparsers: argparse._SubParsersAction) -> None:

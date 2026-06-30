@@ -20,6 +20,9 @@ TARGET_MAP: dict[str, str] = {
         "/openroad/results/nangate45/forward_kernel/base/6_final.gds"
     ),
     "llvm": "$(ODIR)/04_llvm.ll",
+    "verilog_results": "$(ODIR)/bambu/baseline/07_results.txt",
+    "optimized_results": "$(ODIR)/bambu/optimized/07_results.txt",
+    "transformed_results": "$(ODIR)/bambu/transformed/07_results.txt",
 }
 
 

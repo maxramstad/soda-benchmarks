@@ -24,4 +24,4 @@ mkdocs = "*"
 mkdocs-material = "*"
 
 [activation.env]
-PYTHONPATH = "/workspaces/soda/soda-benchmarks:/workspaces/soda/soda-benchmarks/benches:/opt/llvm-project/python_packages/mlir_core:/opt/torch-mlir/python_packages/torch_mlir:/opt/soda-opt/python_packages/soda:/workspaces/soda/builds/llvm-project/install/python_packages/mlir_core:/usr/local/lib/python3.11/site-packages"
+PYTHONPATH = "/workspaces/soda-benchmarks:/workspaces/soda-benchmarks/benches:/opt/llvm-project/python_packages/mlir_core:/opt/torch-mlir/python_packages/torch_mlir:/opt/soda-opt/python_packages/soda:/workspaces/soda/builds/llvm-project/install/python_packages/mlir_core:/usr/local/lib/python3.11/site-packages"

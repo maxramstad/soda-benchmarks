@@ -45,7 +45,7 @@ def run_workflow(prompt: str) -> dict:
         [
             "claude", "-p", prompt,
             "--output-format", "json",
-            "--allowedTools", "Agent,Bash,Read,Write",
+            "--allowedTools", "Agent,Bash,Read,Write,Skill,Edit",
             "--exclude-dynamic-system-prompt-sections",
         ],
         capture_output=True,
