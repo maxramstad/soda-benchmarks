@@ -27,6 +27,7 @@ Target is always `verilog`.
 ---
 
 ## Phase 1: Scaffold the experiment
+**THIS MUST BE DONE USING SB-CLI** — do not manually create directories or files. Use the following command from `/workspaces/soda-benchmarks/benches/`:
 
 Run from `/workspaces/soda-benchmarks/benches/`:
 

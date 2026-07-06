@@ -44,6 +44,8 @@ Read `input_file`. For every `affine.for` loop that carries a `uid` or `affine_t
 4. **Body classification** — inspect the loop body to determine what operations it contains:
    - **Arithmetic kernel**: body contains `arith.mulf`, `arith.addf`, `arith.subf`, `arith.divf`, or similar floating-point ops, possibly with `affine.load`/`affine.store` supporting them.
    - **Memory access only**: body contains only `affine.store %cst` (init) or `affine.load`/`affine.store` pairs with no arithmetic.
+   - **Transpose**: body contains `affine.load` and `affine.store` where the index expressions are permuted (e.g., `load A[i,j]` → `store B[j,i]`), with no arithmetic beyond trivial copies.
+   - **Accumulation / Scaling**: body performs element-wise accumulation or scalar multiplication without a multi-dimensional reduction (e.g., `C[i,j] = alpha * C[i,j]` or `D[i,j] += expr` where the loop does not reduce across a separate dimension).
    - **Mixed / outer loop**: body contains inner `affine.for` loops; classify based on the deepest arithmetic operations reachable.
 5. **Surrounding scf.for context** — note whether the loop is inside an `scf.for` tiling structure (outer tile loops from the linalg phase).
 
@@ -105,9 +107,11 @@ AI = FLOPs / total_bytes_accessed
 
 For each tagged `affine.for` loop, assign one of the follow strategies, optimizing the kernel for performance while respecting the resource constraints:
 
+Limit the total unrolled instances per arithmetic nest to ≤ 250, and the total DSP usage to ≤ 2186. If a loop's trip count is not divisible by the desired unroll factor, choose the next larger divisor of the trip count. Keep in mind the linalg tiling phase likely tiled the loops to enable full unrolling of all arithmetic kernel loops.
+
 ### Strategy A — Arithmetic Kernel Loop - Unroll as much as Possible
 
-Full-unroll all loops in an arithmetic nest, starting from the innermost loop outward. The loops are already tiled to specific trip counts specifically to enable this unrolling — confirm the product is ≤ 250 and proceed with full unroll.
+Full-unroll all loops in an arithmetic nest, starting from the innermost loop outward. The loops are already tiled to specific trip counts specifically to enable this unrolling — confirm the product is ≤ 250 and proceed with full unroll. If the loop is an accumulation, scaling, or transpose loop, go to strategy D.
 
 **Unrolling procedure (innermost-first):**
 1. Start at the innermost arithmetic loop. Full-unroll it. Running product = its trip count.
@@ -118,6 +122,7 @@ Full-unroll all loops in an arithmetic nest, starting from the innermost loop ou
 Apply when:
 - The loop is an **arithmetic kernel** loop (contains `arith.mulf`, `arith.addf`, etc.), or an outer loop enclosing arithmetic.
 - If full unroll of an outer loop would exceed the DSP budget (> 2186 DSPs), reduce its unroll to a partial factor that stays within budget.
+
 
 ### **EXAMPLE: MatMul AB = A × B (affine_tag_3 to affine_tag_6)**
 
@@ -145,16 +150,35 @@ Apply when:
 - The loop is a **memory-access only** loop (init or copy, no arithmetic).
 - Use `factor = 2` (number of memory channels) by default. This allows two parallel memory transactions, maximizing bandwidth without over-unrolling. This should be done on the inner most loops that do not contain arithmetic operations, as these are the bottlenecks for memory-bound kernels.
 - The factor must divide the trip count evenly. If it does not, choose the smallest factor > 2 that does.
+- **Hard cap: the unroll factor for memory-access (init) loops must never exceed 20.**
 
 ### Strategy C — No Unroll
 Apply when:
 - The loop is an outer `scf.for` tiling loop (not an `affine.for`; these are not transformed).
 - The loop contains only other loops and no direct operations.
 
+### Strategy D — Transpose Loop — Innermost Loop Only
+Apply when:
+- The loop is classified as **Transpose**.
+- Only unroll the **innermost** loop in the nest; do not propagate unrolling to any enclosing loops, regardless of remaining budget.
+- The innermost loop's unroll factor = full unroll if trip count ≤ 20, otherwise partial unroll by the largest divisor ≤ 20.
+- If the trip count is not divisible by the desired factor, choose the nearest smaller divisor.
+
+### Strategy E — Accumulation / Scaling Loop — Innermost Loop Only
+Apply when:
+- The loop is classified as **Accumulation / Scaling** (memory scale: `C[i,j] = alpha * C[i,j]`; memory add: `D[i,j] += expr`).
+- Only unroll the **innermost** loop in the nest; do not propagate unrolling to any enclosing loops, regardless of remaining budget.
+- The innermost loop's unroll factor = full unroll if trip count ≤ 20, otherwise partial unroll by the largest divisor ≤ 20.
+- If the trip count is not divisible by the desired factor, choose the nearest smaller divisor.
+- **Hard cap: the unroll factor for memory scale and memory add loops must never exceed 20.**
+
 ### Unrolling Validation
 
 After assigning strategies to all loops, verify:
 - Total unrolled instances per arithmetic nest ≤ 250.
+- Total unrolled instances per Transpose nest ≤ 20.
+- Total unrolled instances per Accumulation / Scaling (memory scale / memory add) nest ≤ 20.
+- Total unrolled instances per memory-access (memory init) nest ≤ 20.
 - Total DSP usage ≤ 2186.
 - Every partial-unroll factor divides its loop's trip count evenly.
 
@@ -220,7 +244,9 @@ Keep the report concise. Omit lengthy MLIR excerpts; reference loop tags and bou
 | Scenario                                   | Recommendation                                              |
 |--------------------------------------------|-------------------------------------------------------------|
 | Arithmetic loop                            | Full unroll only if cumulative instances stay ≤ 250         |
-| Memory-access loop (init / copy)           | Partial unroll by 2 (or nearest divisor)                   |
+| Memory-access loop (memory init)           | Partial unroll by 2 (or nearest divisor); never exceed 20  |
+| Transpose loop                             | Unroll innermost loop only (full if ≤ 20, else partial)   |
+| Accumulation / scaling loop (memory scale / memory add) | Unroll innermost loop only (full if ≤ 20, else partial); never exceed 20 |
 | Trip count not divisible by factor        | Choose next larger divisor of trip count                   |
 
 ---

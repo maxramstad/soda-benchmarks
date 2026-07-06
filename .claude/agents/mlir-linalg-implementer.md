@@ -70,6 +70,8 @@ soda-opt \
 
 Create `transform_schedules/02_linalg_lowering_ts.mlir`. This schedule lowers the tiled linalg IR to the affine dialect using a fixed sequence of passes:
 
+**THIS IS A FIXED SEQUENCE** — do not change the order or add/remove passes. You must apply convert-linalg-to-affine-loops, affine-data-copy-generate, erase-buffer-deallocation, and promote-buffers-to-stack in that order.
+
 ```mlir
 module @transforms attributes {transform.with_named_sequence} {
   transform.named_sequence @__transform_main(%arg0: !transform.any_op {transform.readonly}) {

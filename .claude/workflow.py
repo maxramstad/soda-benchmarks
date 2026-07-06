@@ -45,7 +45,7 @@ def run_workflow(prompt: str) -> dict:
         [
             "claude", "-p", prompt,
             "--output-format", "json",
-            "--allowedTools", "Agent,Bash,Read,Write",
+            "--allowedTools", "Agent,Bash,Read,Write,Skill,Edit,Glob,Grep",
             "--exclude-dynamic-system-prompt-sections",
         ],
         capture_output=True,
@@ -106,14 +106,18 @@ def main() -> None:
     run_name = f"{kernel}_{dimension}_{target}"
     mlflow.set_experiment(EXPERIMENT_NAME)
 
+    print(f"[1/5] Starting run: {run_name}")
     with mlflow.start_run(run_name=run_name), mlflow.start_span("workflow") as span:
         span.set_attributes({"kernel": kernel, "dimension": dimension, "target": target})
+        print(f"[2/5] Syncing workflow prompt ({WORKFLOW_PROMPT})")
         sync_workflow_prompt(WORKFLOW_PROMPT, kernel, dimension, target)
 
         # --- Execute the workflow via Claude Code CLI ---
+        print(f"[3/5] Running Claude Code workflow (target={target})")
         claude_output = run_workflow(Path(WORKFLOW_PROMPT).read_text())
 
         # --- Locate the experiment directory produced by the workflow ---
+        print("[4/5] Locating experiment directory")
         benches_root = Path(__file__).parent / "benches"
         exp_dir = find_experiment_dir(benches_root)
         if exp_dir is None:
@@ -145,6 +149,7 @@ def main() -> None:
         print(f"Logged params: {params}")
 
         # --- Log transform schedule artifacts ---
+        print("[5/5] Logging transform schedule artifacts")
         sched_dir = exp_dir / TRANSFORM_SCHEDULE_DIR
         for artifact_name in ARTIFACTS:
             artifact_path = sched_dir / artifact_name
