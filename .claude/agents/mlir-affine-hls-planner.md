@@ -92,8 +92,8 @@ AI = FLOPs / total_bytes_accessed
 
 - Each fully unrolled loop body instance produces live values that occupy registers.
 - Total unrolled instances = product of trip counts of all fully-unrolled loops in a nest.
-- Keep total unrolled instances per arithmetic nest ≤ 250 to HLS runtime impact.
-- If an arithmetic nest would exceed 250 instances, stop unrolling at the loop level where the product first exceeds the threshold. Each arithmetic nest is budgeted independently.
+- Keep total unrolled instances per arithmetic nest ≤ 150 to HLS runtime impact.
+- If an arithmetic nest would exceed 150 instances, stop unrolling at the loop level where the product first exceeds the threshold. Each arithmetic nest is budgeted independently.
 
 ### Memory Bandwidth (Memory-Access Loops)
 
@@ -107,7 +107,7 @@ AI = FLOPs / total_bytes_accessed
 
 For each tagged `affine.for` loop, assign one of the follow strategies, optimizing the kernel for performance while respecting the resource constraints:
 
-Limit the total unrolled instances per arithmetic nest to ≤ 250, and the total DSP usage to ≤ 2186. If a loop's trip count is not divisible by the desired unroll factor, choose the next larger divisor of the trip count. Keep in mind the linalg tiling phase likely tiled the loops to enable full unrolling of all arithmetic kernel loops.
+Limit the total unrolled instances per arithmetic nest to ≤ 150, and the total DSP usage to ≤ 2186. For scaling/transpose/element-wise loop bodies, limit to ≤ 10. If a loop's trip count is not divisible by the desired unroll factor, choose the next larger divisor of the trip count. Keep in mind the linalg tiling phase likely tiled the loops to enable full unrolling of all arithmetic kernel loops.
 
 ### Strategy A — Arithmetic Kernel Loop - Unroll as much as Possible
 
@@ -116,8 +116,8 @@ Full-unroll all loops in an arithmetic nest, starting from the innermost loop ou
 **Unrolling procedure (innermost-first):**
 1. Start at the innermost arithmetic loop. Full-unroll it. Running product = its trip count.
 2. Move to the next enclosing arithmetic loop. Multiply its trip count into the running product.
-3. If the new product ≤ 250: full-unroll this loop too. Repeat step 2 for the next outer loop.
-4. If the new product > 250: stop. Do not unroll this loop or any further outer loop.
+3. If the new product ≤ 150: full-unroll this loop too. Repeat step 2 for the next outer loop.
+4. If the new product > 150: stop. Do not unroll this loop or any further outer loop.
 
 Apply when:
 - The loop is an **arithmetic kernel** loop (contains `arith.mulf`, `arith.addf`, etc.), or an outer loop enclosing arithmetic.
@@ -137,13 +137,13 @@ affine_tag_6: for i in 0..1          (trip=1, outer)
         mul_acc → AB[i,j,l]
 ```
 Innermost-first unrolling procedure:
-1. affine_tag_3 (k, trip=10): full unroll. Running product = 10 ≤ 250 ✓
-2. affine_tag_4 (l, trip=9): full unroll. Running product = 10×9 = 90 ≤ 250 ✓
-3. affine_tag_5 (j, trip=8): full unroll. Running product = 90×8 = 720 > 250 ✗ — stop here, find a partial unroll factor.
-4. affine_tag_5 (j, trip=8): partial unroll by factor=4 (8/4=2 instances, running product = 90×4=360 > 250 ✗) → try factor=2 (8/2=4 instances, running product = 90×2=180 ≤ 250 ✓)
+1. affine_tag_3 (k, trip=10): full unroll. Running product = 10 ≤ 150 ✓
+2. affine_tag_4 (l, trip=9): full unroll. Running product = 10×9 = 90 ≤ 150 ✓
+3. affine_tag_5 (j, trip=8): full unroll. Running product = 90×8 = 720 > 150 ✗ — stop here, find a partial unroll factor.
+4. affine_tag_5 (j, trip=8): partial unroll by factor=4 (8/4=2 instances, running product = 90×4=360 > 150 ✗) → try factor=2 (8/2=4 instances, running product = 90×2=180 > 150 ✗) → try factor=1 (no unroll, running product = 90 ≤ 150 ✓)
 5. affine_tag_6 (i, trip=1): no unroll (outer loop, and budget already stopped at affine_tag_5).
 
-Result: affine_tag_3 and affine_tag_4 are fully unrolled (90 instances); affine_tag_5 is partially unrolled with factor=2, and affine_tag_6 is not unrolled. Unroll priority: 3 → 4 → 5 → 6.
+Result: affine_tag_3 and affine_tag_4 are fully unrolled (90 instances); affine_tag_5 and affine_tag_6 are not unrolled. Unroll priority: 3 → 4 → (5/6 not unrolled).
 
 ### Strategy B — Memory access loop (init or copy) - Partial Unroll
 Apply when:
@@ -175,9 +175,9 @@ Apply when:
 ### Unrolling Validation
 
 After assigning strategies to all loops, verify:
-- Total unrolled instances per arithmetic nest ≤ 250.
-- Total unrolled instances per Transpose nest ≤ 20.
-- Total unrolled instances per Accumulation / Scaling (memory scale / memory add) nest ≤ 20.
+- Total unrolled instances per arithmetic nest ≤ 150.
+- Total unrolled instances per Transpose nest ≤ 10.
+- Total unrolled instances per Accumulation / Scaling (memory scale / memory add) nest ≤ 10.
 - Total unrolled instances per memory-access (memory init) nest ≤ 20.
 - Total DSP usage ≤ 2186.
 - Every partial-unroll factor divides its loop's trip count evenly.
@@ -229,7 +229,8 @@ and the total FLOP count across all tagged loops.
 ...
 
 ## Resource Budget Check
-- Total unrolled instances per arithmetic nest: <sum> / 250 (<percent>%)
+- Total unrolled instances per arithmetic nest: <sum> / 150 (<percent>%)
+- Total unrolled instances per Transpose/Scaling nest: <sum> / 10 (<percent>%)
 - Total DSP usage: <sum> / 2186 (<percent>%)
 - Unroll factor divisibility: PASS / list violations
 - Status: PASS or list of violations
@@ -243,10 +244,10 @@ Keep the report concise. Omit lengthy MLIR excerpts; reference loop tags and bou
 
 | Scenario                                   | Recommendation                                              |
 |--------------------------------------------|-------------------------------------------------------------|
-| Arithmetic loop                            | Full unroll only if cumulative instances stay ≤ 250         |
+| Arithmetic loop                            | Full unroll only if cumulative instances stay ≤ 150         |
 | Memory-access loop (memory init)           | Partial unroll by 2 (or nearest divisor); never exceed 20  |
-| Transpose loop                             | Unroll innermost loop only (full if ≤ 20, else partial)   |
-| Accumulation / scaling loop (memory scale / memory add) | Unroll innermost loop only (full if ≤ 20, else partial); never exceed 20 |
+| Transpose loop                             | Unroll innermost loop only (full if ≤ 10, else partial)   |
+| Accumulation / scaling loop (memory scale / memory add) | Unroll innermost loop only (full if ≤ 10, else partial); never exceed 10 |
 | Trip count not divisible by factor        | Choose next larger divisor of trip count                   |
 
 ---
@@ -257,3 +258,4 @@ Keep the report concise. Omit lengthy MLIR excerpts; reference loop tags and bou
 - **Counting instances across nested loops**: Fully unrolling three nested loops with trip counts 1, 4, 4 gives 1×4×4=16 instances, not 1+4+4=9.
 - **scf.for vs affine.for**: `scf.for` loops from the tiling phase are not `affine.for` and cannot be targeted by `transform.loop.fullunroll` or `transform.loop.unroll`. Only tag and unroll `affine.for` loops.
 - **Memory-access loops in arithmetic nests**: A loop that does only `affine.store %cst` is an init loop even if it is syntactically adjacent to arithmetic loops. Classify by body content, not position.
+- **Transpose/Scaling limit of 10**: These operations have much stricter unroll limits (10 vs 150 for arithmetic). Only unroll the innermost loop and cap at 10 instances to avoid memory bandwidth saturation.
